@@ -35,32 +35,19 @@
     .monitor .name a:hover { text-decoration: underline; }
     .monitor .name small { display: block; font-weight: 400; color: #666; font-size: .8rem; }
 
-    /* Status pill */
-    .state {
+    /* status dot */
+    .state-dot {
       justify-self: end;
-      white-space: nowrap;
-      font-size: .72rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .04em;
-      padding: .25rem .6rem;
-      border-radius: 999px;
-      background: #e5e5e5;
-      color: #444;
-    }
-    .state.up    { background: #d7efd7; color: #1c5c1c; }
-    .state.down  { background: #f3d6d6; color: #7a1f1f; }
-    .state.paused{ background: #f0e6c8; color: #6b5410; }
-    .dot {
-      display: inline-block;
-      width: .55em; height: .55em;
+      width: 15px; height: 15px;
       border-radius: 50%;
-      margin-right: .4em;
-      vertical-align: middle;
-      background: currentColor;
+      background: #999;
+      box-shadow: 0 0 0 3px rgba(0, 0, 0, .05);
     }
+    .state-dot.up    { background: #3ba55d; }  /* green  */
+    .state-dot.down  { background: #cc3b3b; }  /* red    */
+    .state-dot.paused{ background: #d9a441; }  /* orange */
 
-    /* 90-day history bar */
+    /* history bar */
     .history {
       grid-column: 1 / -1;
       display: flex;
@@ -89,7 +76,7 @@
       margin-top: .15rem;
     }
 
-    /* Stats row: uptime ratios + response/interval/last-checked */
+    /* stats row */
     .stats {
       grid-column: 1 / -1;
       display: flex;
@@ -117,10 +104,7 @@
       body { color: #d8d8d8; background: #1c1c1c; }
       p.sub, .monitor .name small, footer { color: #999; }
       .monitor { border-color: #333; }
-      .state { background: #2a2a2a; color: #bbb; }
-      .state.up    { background: #16351a; color: #a7e0a7; }
-      .state.down  { background: #3a1919; color: #f0b3b3; }
-      .state.paused{ background: #38310f; color: #e2cf8a; }
+      .state-dot { box-shadow: 0 0 0 3px rgba(255, 255, 255, .06); }
       .history i { background: #3a3a3a; }
       .stats { color: #999; }
       .stats b { color: #ccc; }
@@ -142,8 +126,7 @@
   </footer>
 
   <script>
-    // UptimeRobot status codes -> our buckets
-    // 0 paused, 1 not checked yet, 2 up, 8 seems down, 9 down
+    // status code -> label
     const STATE = {
       0: { cls: "paused", label: "Paused" },
       1: { cls: "paused", label: "Not checked yet" },
@@ -222,14 +205,15 @@
         const host = (m.url || "").replace(/^https?:\/\//, "").replace(/\/+$/, "");
         const name = (m.friendly_name || host).replace(/\/+$/, "");
         const showHost = host && host.toLowerCase() !== name.toLowerCase();
+        const href = "https://" + host;   // always https
         const hist = Array.isArray(m.history) && m.history.length ? historyBar(m.history) : "";
         return `
           <div class="monitor">
             <div class="name">
-              <a href="https://${escapeHtml(host)}" rel="noopener">${escapeHtml(name)}</a>
+              <a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(name)}</a>
               ${showHost ? `<small>${escapeHtml(host)}</small>` : ""}
             </div>
-            <div class="state ${s.cls}"><span class="dot"></span>${s.label}</div>
+            <span class="state-dot ${s.cls}" title="${escapeHtml(s.label)}" aria-label="${escapeHtml(s.label)}" role="img"></span>
             ${hist}
             ${statsRow(m)}
           </div>`;

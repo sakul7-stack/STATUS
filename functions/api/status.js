@@ -1,7 +1,4 @@
-// Cloudflare Pages Function -> route: /api/status
-// Proxies UptimeRobot (keeps the API key server-side), enriches the payload with
-// 90-day daily uptime history + response-time / last-checked info, and edge-caches
-// the result so we don't blow UptimeRobot's rate limit.
+// GET /api/status — proxies UptimeRobot, adds 90-day history, edge-cached.
 
 const DAYS = 90;
 
@@ -13,13 +10,13 @@ export async function onRequest(context) {
     return json({ stat: "fail", error: "UPTIMEROBOT_API_KEY is not set" }, 500);
   }
 
-  // Serve from edge cache if we fetched recently.
+  // edge cache
   const cache = caches.default;
   const cacheKey = new Request("https://status.kushal-kc.com.np/__cache/monitors-v2");
   const hit = await cache.match(cacheKey);
   if (hit) return hit;
 
-  // Build one day-range per day for the last DAYS days (oldest -> newest).
+  // one range per day, oldest -> newest
   const now = Math.floor(Date.now() / 1000);
   const ranges = [];
   const dayStart = [];
@@ -62,7 +59,7 @@ export async function onRequest(context) {
     const [d1, d7, d30] = (m.custom_uptime_ratio || "").split("-");
     const dayRatios = (m.custom_uptime_ranges || "").split("-");
 
-    // Per-day history, oldest -> newest. null = no data (before the monitor existed).
+    // null = no data (before monitor existed)
     const history = dayStart.map((start, idx) => {
       if (start + 86400 <= (m.create_datetime || 0)) return null;
       const v = parseFloat(dayRatios[idx]);
@@ -79,11 +76,11 @@ export async function onRequest(context) {
       friendly_name: m.friendly_name,
       url: m.url,
       status: m.status,
-      interval: m.interval,               // seconds between checks
+      interval: m.interval,        // seconds
       uptime: { d1: num(d1), d7: num(d7), d30: num(d30) },
-      avg_response: avg,                  // ms
-      last_checked: rt ? rt.datetime : null, // unix seconds
-      history,                            // array of DAYS numbers|null
+      avg_response: avg,           // ms
+      last_checked: rt ? rt.datetime : null,
+      history,
     };
   });
 
