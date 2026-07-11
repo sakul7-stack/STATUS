@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>status.kushal-kc.com.np</title>
+  <meta name="description" content="Live status of kushal-kc.com.np and its subdomains.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/favicon.png">
+  <style>
+    body {
+      margin: 0 auto;
+      max-width: 44rem;
+      padding: 2rem 1.25rem 4rem;
+      font: 18px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: #222;
+      background: #efefef;
+    }
+    h1 { font-size: 1.6rem; line-height: 1.2; margin: 0 0 .25rem; }
+    h1 a { color: inherit; text-decoration: none; }
+    p.sub { margin: 0 0 2rem; color: #555; }
+
+    .monitor {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: .4rem 1rem;
+      padding: 1.1rem 0;
+      border-bottom: 1px solid #ddd;
+    }
+    .monitor:last-child { border-bottom: 0; }
+    .monitor .name { font-weight: 600; word-break: break-word; }
+    .monitor .name a { color: inherit; text-decoration: none; }
+    .monitor .name a:hover { text-decoration: underline; }
+    .monitor .name small { display: block; font-weight: 400; color: #666; font-size: .8rem; }
+
+    /* Status pill */
+    .state {
+      justify-self: end;
+      white-space: nowrap;
+      font-size: .72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      padding: .25rem .6rem;
+      border-radius: 999px;
+      background: #e5e5e5;
+      color: #444;
+    }
+    .state.up    { background: #d7efd7; color: #1c5c1c; }
+    .state.down  { background: #f3d6d6; color: #7a1f1f; }
+    .state.paused{ background: #f0e6c8; color: #6b5410; }
+    .dot {
+      display: inline-block;
+      width: .55em; height: .55em;
+      border-radius: 50%;
+      margin-right: .4em;
+      vertical-align: middle;
+      background: currentColor;
+    }
+
+    /* 90-day history bar */
+    .history {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 2px;
+      height: 30px;
+      margin-top: .25rem;
+    }
+    .history i {
+      flex: 1 1 0;
+      min-width: 1px;
+      border-radius: 2px;
+      background: #cdcdcd;            /* no data */
+      transition: transform .1s;
+    }
+    .history i.up   { background: #3ba55d; }
+    .history i.warn { background: #d9a441; }
+    .history i.down { background: #cc3b3b; }
+    .history i:hover { transform: scaleY(1.15); }
+
+    .histlabels {
+      grid-column: 1 / -1;
+      display: flex;
+      justify-content: space-between;
+      color: #999;
+      font-size: .7rem;
+      margin-top: .15rem;
+    }
+
+    /* Stats row: uptime ratios + response/interval/last-checked */
+    .stats {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-wrap: wrap;
+      gap: .4rem 1.25rem;
+      color: #666;
+      font-size: .8rem;
+      font-variant-numeric: tabular-nums;
+      margin-top: .35rem;
+    }
+    .stats b { font-weight: 600; color: #333; }
+    .stats .sep { color: #bbb; }
+
+    footer { margin-top: 3rem; color: #666; font-size: .85rem; }
+    footer p { margin: .4rem 0; }
+    footer a { color: #444; }
+    .error {
+      padding: 1rem 1.25rem;
+      border-radius: 6px;
+      background: #f3d6d6;
+      color: #7a1f1f;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body { color: #d8d8d8; background: #1c1c1c; }
+      p.sub, .monitor .name small, footer { color: #999; }
+      .monitor { border-color: #333; }
+      .state { background: #2a2a2a; color: #bbb; }
+      .state.up    { background: #16351a; color: #a7e0a7; }
+      .state.down  { background: #3a1919; color: #f0b3b3; }
+      .state.paused{ background: #38310f; color: #e2cf8a; }
+      .history i { background: #3a3a3a; }
+      .stats { color: #999; }
+      .stats b { color: #ccc; }
+      .stats .sep, .histlabels { color: #666; }
+      .error { background: #3a1919; color: #f0b3b3; }
+    }
+  </style>
+</head>
+<body>
+  <h1><a href="/">status.kushal-kc.com.np</a></h1>
+  <p class="sub">Live status of my projects.</p>
+
+  <div id="list" aria-live="polite">Loading&hellip;</div>
+
+  <footer>
+    <p id="updated">&nbsp;</p>
+    <p>Monitored with <a href="https://uptimerobot.com">UptimeRobot</a>.</p>
+    <p><a href="https://github.com/sakul7-stack/STATUS">GitHub</a></p>
+  </footer>
+
+  <script>
+    // UptimeRobot status codes -> our buckets
+    // 0 paused, 1 not checked yet, 2 up, 8 seems down, 9 down
+    const STATE = {
+      0: { cls: "paused", label: "Paused" },
+      1: { cls: "paused", label: "Not checked yet" },
+      2: { cls: "up",     label: "Operational" },
+      8: { cls: "down",   label: "Seems down" },
+      9: { cls: "down",   label: "Down" },
+    };
+
+    const DAY = 86400000;
+
+    function barClass(r) {
+      if (r == null) return "";
+      if (r >= 99.99) return "up";
+      if (r >= 95) return "warn";
+      return "down";
+    }
+
+    function historyBar(history) {
+      const n = history.length;
+      const now = Date.now();
+      const bars = history.map((r, idx) => {
+        const daysAgo = n - 1 - idx;
+        const date = new Date(now - daysAgo * DAY).toLocaleDateString();
+        const title = date + " · " + (r == null ? "no data" : r.toFixed(2) + "%");
+        return `<i class="${barClass(r)}" title="${title}"></i>`;
+      }).join("");
+      return `<div class="history">${bars}</div>
+        <div class="histlabels"><span>${n} days ago</span><span>today</span></div>`;
+    }
+
+    function relTime(sec) {
+      if (!sec) return null;
+      const diff = Math.floor(Date.now() / 1000) - sec;
+      if (diff < 60) return diff + "s ago";
+      if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+      if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+      return Math.floor(diff / 86400) + "d ago";
+    }
+
+    function fmtInterval(sec) {
+      if (!sec) return null;
+      const m = Math.round(sec / 60);
+      return m < 60 ? "every " + m + " min" : "every " + Math.round(m / 60) + " h";
+    }
+
+    function statsRow(m) {
+      const parts = [];
+      const u = m.uptime || {};
+      if (u.d1 != null) {
+        parts.push(`24h <b>${u.d1.toFixed(2)}%</b>`);
+        parts.push(`7d <b>${(u.d7 ?? 0).toFixed(2)}%</b>`);
+        parts.push(`30d <b>${(u.d30 ?? 0).toFixed(2)}%</b>`);
+      }
+      if (m.avg_response != null) parts.push(`avg <b>${m.avg_response} ms</b>`);
+      const iv = fmtInterval(m.interval);
+      if (iv) parts.push(iv);
+      const rc = relTime(m.last_checked);
+      if (rc) parts.push("checked " + rc);
+      return `<div class="stats">${parts.join('<span class="sep">·</span> ')}</div>`;
+    }
+
+    function render(data) {
+      const list = document.getElementById("list");
+      const updated = document.getElementById("updated");
+
+      if (!data || data.stat !== "ok" || !Array.isArray(data.monitors)) {
+        const err = data && data.error
+          ? (typeof data.error === "string" ? data.error : JSON.stringify(data.error))
+          : "Unknown error talking to the API.";
+        list.innerHTML = '<p class="error">Couldn\'t load status: ' + escapeHtml(err) + "</p>";
+        return;
+      }
+
+      list.innerHTML = data.monitors.map(m => {
+        const s = STATE[m.status] || { cls: "", label: "Unknown" };
+        const host = (m.url || "").replace(/^https?:\/\//, "").replace(/\/+$/, "");
+        const name = (m.friendly_name || host).replace(/\/+$/, "");
+        const showHost = host && host.toLowerCase() !== name.toLowerCase();
+        const hist = Array.isArray(m.history) && m.history.length ? historyBar(m.history) : "";
+        return `
+          <div class="monitor">
+            <div class="name">
+              <a href="https://${escapeHtml(host)}" rel="noopener">${escapeHtml(name)}</a>
+              ${showHost ? `<small>${escapeHtml(host)}</small>` : ""}
+            </div>
+            <div class="state ${s.cls}"><span class="dot"></span>${s.label}</div>
+            ${hist}
+            ${statsRow(m)}
+          </div>`;
+      }).join("");
+
+      updated.textContent = "Last updated " + new Date().toLocaleTimeString();
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, c => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[c]));
+    }
+
+    async function load() {
+      try {
+        const res = await fetch("/api/status", { cache: "no-store" });
+        render(await res.json());
+      } catch (e) {
+        render({ stat: "fail", error: e.message });
+      }
+    }
+
+    load();
+    setInterval(load, 60000); // refresh every 60s
+  </script>
+</body>
+</html>

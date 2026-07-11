@@ -1,0 +1,13 @@
+{
+  "name": "status-kushal-kc",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Status page for kushal-kc.com.np, powered by UptimeRobot on Cloudflare Pages",
+  "scripts": {
+    "dev": "npx wrangler pages dev . --port 8788 --compatibility-date 2024-01-01",
+    "deploy": "npx wrangler pages deploy . --project-name status-kushal-kc"
+  },
+  "devDependencies": {
+    "wrangler": "^4.110.0"
+  }
+}
