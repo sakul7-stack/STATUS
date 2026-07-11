@@ -5,7 +5,7 @@
   "description": "Status page for kushal-kc.com.np, powered by UptimeRobot on Cloudflare Pages",
   "scripts": {
     "dev": "npx wrangler pages dev . --port 8788 --compatibility-date 2024-01-01",
-    "deploy": "npx wrangler pages deploy . --project-name status-kushal-kc"
+    "deploy": "npx wrangler pages deploy . --project-name status-kushal-kc --branch production --commit-dirty=true"
   },
   "devDependencies": {
     "wrangler": "^4.110.0"

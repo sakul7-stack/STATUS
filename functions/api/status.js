@@ -1,6 +1,10 @@
-// GET /api/status — proxies UptimeRobot, adds 90-day history, edge-cached.
+// GET /api/status — proxies UptimeRobot, adds 30-day history, edge-cached.
+// Stale-while-revalidate: always answer from cache instantly; refresh in the
+// background. Only the very first cold hit waits on UptimeRobot (~20s).
 
-const DAYS = 90;
+const DAYS = 30;
+const FRESH_MS = 90_000;   // younger than this -> serve as-is, no refresh
+const RETAIN_S = 3600;     // keep the cached copy at the edge up to 1h
 
 export async function onRequest(context) {
   const { env } = context;
@@ -10,20 +14,35 @@ export async function onRequest(context) {
     return json({ stat: "fail", error: "UPTIMEROBOT_API_KEY is not set" }, 500);
   }
 
-  // edge cache
   const cache = caches.default;
-  const cacheKey = new Request("https://status.kushal-kc.com.np/__cache/monitors-v2");
-  const hit = await cache.match(cacheKey);
-  if (hit) return hit;
+  const cacheKey = new Request(`https://status.kushal-kc.com.np/__cache/monitors-${DAYS}d`);
+  const cached = await cache.match(cacheKey);
 
+  if (cached) {
+    const age = Date.now() - Number(cached.headers.get("x-generated-ms") || 0);
+    if (age > FRESH_MS) {
+      // stale -> refresh in the background, but respond instantly with the stale copy
+      context.waitUntil(refresh(apiKey, cache, cacheKey).catch(() => {}));
+    }
+    return cached;
+  }
+
+  // cold: nothing cached yet -> must wait for UptimeRobot (slow, rare)
+  try {
+    return await refresh(apiKey, cache, cacheKey);
+  } catch (e) {
+    return json({ stat: "fail", error: "Upstream fetch failed: " + e.message }, 502);
+  }
+}
+
+async function refresh(apiKey, cache, cacheKey) {
   // one range per day, oldest -> newest
   const now = Math.floor(Date.now() / 1000);
   const ranges = [];
   const dayStart = [];
   for (let i = DAYS; i >= 1; i--) {
     const start = now - i * 86400;
-    const end = now - (i - 1) * 86400;
-    ranges.push(`${start}_${end}`);
+    ranges.push(`${start}_${now - (i - 1) * 86400}`);
     dayStart.push(start);
   }
 
@@ -36,21 +55,17 @@ export async function onRequest(context) {
     response_times_limit: "1",
   });
 
-  let data;
-  try {
-    const upstream = await fetch("https://api.uptimerobot.com/v2/getMonitors", {
-      method: "POST",
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-        "cache-control": "no-cache",
-      },
-      body,
-    });
-    data = await upstream.json();
-  } catch (e) {
-    return json({ stat: "fail", error: "Upstream fetch failed: " + e.message }, 502);
-  }
+  const upstream = await fetch("https://api.uptimerobot.com/v2/getMonitors", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      "cache-control": "no-cache",
+    },
+    body,
+  });
+  const data = await upstream.json();
 
+  // don't cache failures
   if (!data || data.stat !== "ok" || !Array.isArray(data.monitors)) {
     return json(data || { stat: "fail", error: "No data from UptimeRobot" }, 200);
   }
@@ -87,9 +102,12 @@ export async function onRequest(context) {
   const res = json(
     { stat: "ok", days: DAYS, generated_at: now, monitors },
     200,
-    { "cache-control": "public, max-age=120" }
+    {
+      "cache-control": `public, max-age=${RETAIN_S}`,
+      "x-generated-ms": String(Date.now()),
+    }
   );
-  context.waitUntil(cache.put(cacheKey, res.clone()));
+  await cache.put(cacheKey, res.clone());
   return res;
 }
 
