@@ -19,15 +19,18 @@ export async function onRequest(context) {
   const cached = await cache.match(cacheKey);
 
   if (cached) {
+    // We have *something* cached. Serve it instantly no matter how old it is,
+    // and kick off a background refresh only when it's gone stale. The visitor
+    // never waits on UptimeRobot.
     const age = Date.now() - Number(cached.headers.get("x-generated-ms") || 0);
     if (age > FRESH_MS) {
-      // stale -> refresh in the background, but respond instantly with the stale copy
       context.waitUntil(refresh(apiKey, cache, cacheKey).catch(() => {}));
     }
     return cached;
   }
 
-  // cold: nothing cached yet -> must wait for UptimeRobot (slow, rare)
+  // cold: nothing cached yet in this datacenter -> must wait for UptimeRobot
+  // (slow, but only the very first hit per colo ever pays this).
   try {
     return await refresh(apiKey, cache, cacheKey);
   } catch (e) {
@@ -103,7 +106,9 @@ async function refresh(apiKey, cache, cacheKey) {
     { stat: "ok", days: DAYS, generated_at: now, monitors },
     200,
     {
-      "cache-control": `public, max-age=${RETAIN_S}`,
+      // Edge/browser may serve this for up to RETAIN_S fresh, and keep serving
+      // it stale for a day while a background refresh runs — so nobody blocks.
+      "cache-control": `public, max-age=${RETAIN_S}, stale-while-revalidate=86400`,
       "x-generated-ms": String(Date.now()),
     }
   );

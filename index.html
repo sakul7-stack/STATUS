@@ -222,6 +222,35 @@
       updated.textContent = "Last updated " + new Date().toLocaleTimeString();
     }
 
+    // ---- instant paint from last-known data ----------------------------
+    // We keep the most recent good payload in localStorage so a returning
+    // visitor sees data immediately (however old), instead of "Loading…"
+    // while the network round-trips.
+    const CACHE_KEY = "status:last";
+
+    function showCached() {
+      try {
+        const raw = localStorage.getItem(CACHE_KEY);
+        if (!raw) return false;
+        const { data, at } = JSON.parse(raw);
+        render(data);
+        const updated = document.getElementById("updated");
+        const mins = Math.round((Date.now() - at) / 60000);
+        const ago = mins < 1 ? "just now" : mins < 60 ? mins + " min ago"
+          : Math.round(mins / 60) + " h ago";
+        updated.textContent = "Showing cached data from " + ago + " · refreshing…";
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function saveCached(data) {
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify({ data, at: Date.now() }));
+      } catch (e) { /* private mode / quota — ignore */ }
+    }
+
     function escapeHtml(str) {
       return String(str).replace(/[&<>"']/g, c => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -231,12 +260,20 @@
     async function load() {
       try {
         const res = await fetch("/api/status", { cache: "no-store" });
-        render(await res.json());
+        const data = await res.json();
+        if (data && data.stat === "ok" && Array.isArray(data.monitors)) {
+          saveCached(data);          // remember the last good payload
+          render(data);
+        } else if (!haveCache) {
+          render(data);              // only show the error if we've got nothing better
+        }
       } catch (e) {
-        render({ stat: "fail", error: e.message });
+        if (!haveCache) render({ stat: "fail", error: e.message });
       }
     }
 
+    // Paint instantly from the last-known data, then fetch fresh in the background.
+    const haveCache = showCached();
     load();
     setInterval(load, 60000); // refresh every 60s
   </script>
